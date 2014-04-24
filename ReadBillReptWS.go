@@ -119,27 +119,21 @@ type ReadBillReptWSResponse struct {
 //	TuxFieldValue string   `xml:",chardata"`
 //}
 
-type FaultResponseList struct {
-	XMLName      xml.Name `xml:""`
-	Nonce        string   `xml:",chardata"`
-	EncodingType string   `xml:",attr"`
-}
-
 type FaultResponse struct {
-	XMLName     xml.Name     `xml:"Fault"`
-	Faultcode   string       `xml:"faultcode"`
-	Faultstring string       `xml:"faultstring"`
-	Detail      DetailStruct `xml:"detail"`
+	XMLName     xml.Name      `xml:"Fault"`
+	Faultcode   string        `xml:"faultcode"`
+	Faultstring string        `xml:"faultstring"`
+	Detail      *DetailStruct `xml:"detail"`
 }
 
 type DetailStruct struct {
-	XMLName             xml.Name                  `xml:"detail"`
-	ReadBillReptWSFault ReadBillReptWSFaultStruct `xml:"ReadBillReptWSFault"`
+	XMLName             xml.Name       `xml:"detail"`
+	ReadBillReptWSFault *WSFaultStruct `xml:"ReadBillReptWSFault,omitempty"`
 }
 
-type ReadBillReptWSFaultStruct struct {
-	XMLName xml.Name     `xml:"ReadBillReptWSFault"`
-	Errbuf  ErrbufStruct `xml:"errbuf"`
+type WSFaultStruct struct {
+	XMLName xml.Name      `xml:""`
+	Errbuf  *ErrbufStruct `xml:"errbuf"`
 }
 
 type ErrbufStruct struct {
