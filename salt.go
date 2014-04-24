@@ -94,24 +94,39 @@ func (tux Tuxedo) GetEncrypted() string {
 	return string(encPass.Bytes())
 }
 
+func (tux Tuxedo) IsBasicAuthen() bool {
+	isBasicAuthentication := false
+	if tux.Username != "" && tux.Password != "" {
+		isBasicAuthentication = true
+	}
+
+	return isBasicAuthentication
+}
+
+func (tux Tuxedo) InsertSoapHeader(soap *SoapEnvelope) {
+	if tux.IsBasicAuthen() {
+		const layout = "2006-01-02T15:04:05.999Z"
+		t := time.Now()
+		passwordUsernameToken := PasswordUsernameToken{Password: tux.Password, Type: "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordText"}
+		nonceUsernameToken := NonceUsernameToken{Nonce: tux.GetEncrypted(), EncodingType: "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-soap-message-security-1.0#Base64Binary"}
+		userToken := UsernameToken{Id: "UsernameToken-20", Wsu: "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd", Username: tux.Username, Password: passwordUsernameToken, Nonce: nonceUsernameToken, Created: t.UTC().Format(layout)}
+		soap.Header.Security = Security{MustUnderstand: "1", Wsse: "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd", UsernameToken: userToken}
+	}
+}
+
 func (tux Tuxedo) CreateSoapEnvelope() *SoapEnvelope {
-	const layout = "2006-01-02T15:04:05.999Z"
-	t := time.Now()
+	soapMsg := &SoapEnvelope{}
+	soapMsg.SoapEnv = "http://schemas.xmlsoap.org/soap/envelope/"
+	soapMsg.Urn = "urn:pack.IN" + tux.Operation + "_typedef.salt11"
 
-	retval := &SoapEnvelope{}
-	retval.SoapEnv = "http://schemas.xmlsoap.org/soap/envelope/"
-	retval.Urn = "urn:pack.IN" + tux.Operation + "_typedef.salt11"
+	tux.InsertSoapHeader(soapMsg)
 
-	passwordUsernameToken := PasswordUsernameToken{Password: tux.Password, Type: "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordText"}
-	nonceUsernameToken := NonceUsernameToken{Nonce: tux.GetEncrypted(), EncodingType: "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-soap-message-security-1.0#Base64Binary"}
-	userToken := UsernameToken{Id: "UsernameToken-20", Wsu: "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd", Username: tux.Username, Password: passwordUsernameToken, Nonce: nonceUsernameToken, Created: t.UTC().Format(layout)}
-	retval.Header.Security = Security{MustUnderstand: "1", Wsse: "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd", UsernameToken: userToken}
-	return retval
+	return soapMsg
 }
 
 func (requestInfo RequestInformation) GetResponse() *http.Response {
 	var resp *http.Response
-	var err error //iso-8859-11
+	var err error
 	if resp, err = http.Post(requestInfo.Endpoint, "application/soap+xml; charset="+requestInfo.Charset+"; action="+requestInfo.SoapAction, requestInfo.BufferOfRequest); err != nil {
 		println(err.Error())
 		return nil
@@ -122,27 +137,19 @@ func (requestInfo RequestInformation) GetResponse() *http.Response {
 func (requestInfo RequestInformation) DecodeResponseBody(body io.Reader) (*SaltResponse, error) {
 	charset := mahonia.NewDecoder(requestInfo.Charset)
 	if charset == nil {
-		println("panic: ", requestInfo.Charset)
+		return nil, errors.New("charset is null.")
 	}
 
 	r := charset.NewReader(body)
 	decoder := xml.NewDecoder(r)
 
-	decoder.CharsetReader = CharsetReader /*func(charset string, input io.Reader) (io.Reader, error) {
-		if charset == requestInfo.Charset {
-			charset := mahonia.NewDecoder(requestInfo.Charset)
-			rr := charset.NewReader(body)
-			return rr, nil //transform.NewReader(body, charmap.ISO8859_10.NewDecoder()), nil
-		}
-		return nil, fmt.Errorf("unsupported charset: %q", charset)
-	}*/
+	decoder.CharsetReader = CharsetReader
 
 	for {
 		token, err := decoder.Token()
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			println(err.Error())
 			return nil, err
 		}
 		switch startElement := token.(type) {
@@ -154,7 +161,6 @@ func (requestInfo RequestInformation) DecodeResponseBody(body io.Reader) (*SaltR
 
 				if err != nil {
 
-					println("decode error!")
 					return nil, err
 
 				}
@@ -163,11 +169,10 @@ func (requestInfo RequestInformation) DecodeResponseBody(body io.Reader) (*SaltR
 		}
 	}
 
-	println("Did not find SOAP body element!")
 	return nil, errors.New("Did not find SOAP body element")
 }
 
-// Dynamic Structure
+// -----> Dynamic Structure <----- //
 
 type SoapBody struct {
 	ReadBillReptWS *ReadBillReptWSRequest `xml:ReadBillReptWS",omitempty"`
